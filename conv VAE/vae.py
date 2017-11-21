@@ -13,7 +13,7 @@ def bias_variable(shape, name, initializer=None):
     initializer = initializer
   return tf.get_variable(shape=shape, initializer=initializer, name=name)
 
-def conv2d(x, k, num_features, strides=1, linear=False, name=None):
+def conv2d_(x, k, strides, num_features, linear=False, name=None):
   #filter=[h, w, in_c, out_c]
   in_channel  = x.get_shape().as_list()[3]
   weight = weight_variable([k, k, in_channel, num_features], name=name+"_weight")
@@ -28,7 +28,7 @@ def conv2d(x, k, num_features, strides=1, linear=False, name=None):
   else:
     return tf.nn.relu(x)
 
-def deconv2d(x, k, num_features, strides=1, linear=False, name=None):
+def deconv2d_(x, k, strides, num_features, linear=False, name=None):
   #filter=[h, w, out_c, in_c]
   #output_shape=[batch, h, w, c]
   in_channel = x.get_shape().as_list()[3]
@@ -65,6 +65,8 @@ class ConvVAE(object):
     self.build_loss()
     self.build_train()
 
+    self.global_variables = tf.global_variables()
+    self.trainable_variables = tf.trainable_variables()
     init_op = tf.global_variables_initializer()
     self.sess.run(init_op)
 
@@ -86,12 +88,21 @@ class ConvVAE(object):
 
   def build_encoder(self, x_images):
     x = tf.reshape(x_images, [-1, 28, 28, 1])
-    x = conv2d(x, 3, 8, 2, name='en_layer1')
-    x = conv2d(x, 3, 8, 1, name='en_layer2')
-    x = conv2d(x, 3, 8, 2, name='en_layer3')
-    x = conv2d(x, 1, 4, 1, name='en_layer4')
+    x = tf.layers.conv2d(x, 16, [3, 3], [2, 2], padding='same', name='en_layer1')
+    x = tf.nn.relu(x)
+    print tf.size(x)
+    x = tf.layers.conv2d(x, 16, [3, 3], [1, 1], padding='same', name='en_layer2')
+    x = tf.nn.relu(x)
+    print tf.size(x)
+    x = tf.layers.conv2d(x, 8, [3, 3], [2, 2], padding='same', name='en_layer3')
+    x = tf.nn.relu(x)
+    print tf.size(x)
+    x = tf.layers.conv2d(x, 4, [1, 1], [1, 1], padding='same', name='en_layer4')
+    x = tf.nn.relu(x)
+    print tf.size(x)
     b, h, w, c = x.get_shape().as_list()
     x = tf.reshape(x, [-1, h * w * c])
+    print tf.size(x)
     x = tf.layers.dense(x, 128, name='en_layer5')
     x = tf.nn.relu(x)
     z_mu = tf.layers.dense(x, self.latent_dim, name='layer_mu')
@@ -109,10 +120,14 @@ class ConvVAE(object):
     x = tf.layers.dense(x, 196, name='de_layer2')
     x = tf.nn.relu(x)
     x = tf.reshape(x, [-1, 7, 7, 4])
-    x = deconv2d(x, 1, 8, 1, name='de_layer3')
-    x = deconv2d(x, 3, 8, 2, name='de_layer4')
-    x = deconv2d(x, 3, 8, 1, name='de_layer5')
-    x = deconv2d(x, 3, 1, 2, name='de_layer6')
+    x = tf.layers.conv2d_transpose(x, 8, [1, 1], [1, 1], padding='same', name='de_layer3')
+    x = tf.nn.relu(x)
+    x = tf.layers.conv2d_transpose(x, 8, [3, 3], [2, 2], padding='same', name='de_layer4')
+    x = tf.nn.relu(x)
+    x = tf.layers.conv2d_transpose(x, 8, [3, 3], [1, 1], padding='same', name='de_layer5')
+    x = tf.nn.relu(x)
+    x = tf.layers.conv2d_transpose(x, 1, [3, 3], [2, 2], padding='same', name='de_layer6')
+    x = tf.nn.relu(x)
     b, h, w, c = x.get_shape().as_list()
     x = tf.reshape(x, [-1, h * w * c])
     x_recons = tf.nn.sigmoid(x)
@@ -134,7 +149,7 @@ class ConvVAE(object):
 
   def train(self, x_images, get_summary=False):
     feed_dict = {self.x_images: x_images}
-    loss, _, = self.sess.run([self.loss_op, self.train_op], feed_dict=feed_dict)
+    _, loss, = self.sess.run([self.train_op, self.loss_op], feed_dict=feed_dict)
     return loss
 
   def generate(self, z):
