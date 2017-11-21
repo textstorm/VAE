@@ -23,7 +23,7 @@ def main(args):
       for i in range(1, total_batch + 1):
         global_step = sess.run(model.global_step)
         x_batch, y_batch = mnist.train.next_batch(args.batch_size)
-        loss = model.train(x_batch, args.learning_rate)
+        loss = model.train(x_batch)
 
         if i % args.log_period == 0:
           print "Epoch: %1d, Batch: %04d, loss: %9.9f" % (epoch, i, loss)
