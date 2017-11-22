@@ -30,8 +30,7 @@ def main(args):
       
       if epoch % 50 == 0:
         print "- " * 50
-      #if epoch % args.save_period == 0:
-      if epoch % 10 == 0:
+      if epoch % args.save_period == 0:
         if not os.path.exists("../saves/imgs"):
           os.mkdir("../saves/imgs")
         n_examples = 100
