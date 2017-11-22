@@ -17,29 +17,26 @@ def main(args):
       os.mkdir("../saves")
     sess = tf.Session(config=config_proto)
     model = vae.ConvVAE(args, sess)
-    # print model.global_variables
-    for line in model.trainable_variables:
-      print line
     total_batch = mnist.train.num_examples // args.batch_size
 
     for epoch in range(1, args.nb_epoch + 1):
       for i in range(1, total_batch + 1):
         global_step = sess.run(model.global_step)
         x_batch, y_batch = mnist.train.next_batch(args.batch_size)
-        loss = model.train(x_batch)
+        loss, loss_rec, loss_kl = model.train(x_batch, args.learning_rate)
 
         if i % args.log_period == 0:
-          print "Epoch: %1d, Batch: %04d, loss: %9.9f" % (epoch, i, loss)
+          print "Epoch: %1d, Batch: %04d, loss: %9.9f, loss_rec: %9.9f, loss_kl: %9.9f" \
+              % (epoch, i, loss, loss_rec, loss_kl)
       
       if epoch % 50 == 0:
         print "- " * 50
-      #if epoch % args.save_period == 0:
-      if epoch % 10 == 0:
+      if epoch % args.save_period == 0:
         if not os.path.exists("../saves/imgs"):
           os.mkdir("../saves/imgs")
-        z = np.random.normal(size=[64, args.latent_dim])
-        gen_images = np.reshape(model.generate(z), (64, 28, 28, 1))
-        utils.save_images(gen_images, [8, 8], os.path.join(args.save_dir, "imgs/sample%s.jpg" % epoch))
+        z = np.random.normal(size=[100, args.latent_dim])
+        gen_images = np.reshape(model.generate(z), (100, 28, 28, 1))
+        utils.save_images(gen_images, [10, 10], os.path.join(args.save_dir, "imgs/sample%s.jpg" % epoch))
 
     save_path="../saves/model.ckpt"
     saver = tf.train.Saver()
