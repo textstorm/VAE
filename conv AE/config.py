@@ -23,6 +23,6 @@ def get_args():
   parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate')
   parser.add_argument('--max_grad_norm', type=float, default=10.0, help='Max norm of gradient')
   parser.add_argument('--log_period', type=int, default=100, help='number step to print')
-  parser.add_argument('--save_period', type=int, default=100, help='number epoch to save')
+  parser.add_argument('--save_period', type=int, default=50, help='number epoch to save')
 
   return parser.parse_args()
