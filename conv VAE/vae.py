@@ -1,5 +1,6 @@
 
 import tensorflow as tf
+import numpy as np
 
 def weight_variable(shape, name, initializer=None):
   initializer = tf.truncated_normal_initializer(stddev=0.1)
@@ -13,60 +14,52 @@ def bias_variable(shape, name, initializer=None):
     initializer = initializer
   return tf.get_variable(shape=shape, initializer=initializer, name=name)
 
-def conv2d_(x, k, strides, num_features, linear=False, name=None):
-  #filter=[h, w, in_c, out_c]
-  in_channel  = x.get_shape().as_list()[3]
-  weight = weight_variable([k, k, in_channel, num_features], name=name+"_weight")
-  bias = bias_variable([num_features], name=name+'_bias')
+def conv2d(x, filter_size, n_in, n_out, strides, name=None):
+  w = weight_variable(shape=[filter_size, filter_size, n_in, n_out], name=name+'_w')
+  b = bias_variable(shape=[n_out], name=name+'_b')
   x = tf.nn.conv2d(input=x, 
-                   filter=weight, 
-                   strides=[1, strides, strides, 1], 
-                   padding='SAME')
-  x = tf.nn.bias_add(x, bias)
-  if linear: 
-    return x
-  else:
-    return tf.nn.relu(x)
+                   filter=w, 
+                   strides=[1, strides, strides, 1],
+                   padding='SAME',
+                   name=name)
+  x = tf.nn.bias_add(x, b)
+  x = tf.nn.leaky_relu(x)
+  return x
 
-def deconv2d_(x, k, strides, num_features, linear=False, name=None):
-  #filter=[h, w, out_c, in_c]
-  #output_shape=[batch, h, w, c]
-  in_channel = x.get_shape().as_list()[3]
-  weight = weight_variable([k, k, num_features, in_channel], name=name+'_weight')
-  bias = bias_variable([num_features], name=name+'_bias')
-  batch_size, height, width, channel = x.get_shape().as_list()
-  output_shape = tf.stack([batch_size, height * strides, width * strides, num_features])
-  x = tf.nn.conv2d_transpose(value=x, 
-                             filter=weight, 
-                             output_shape=output_shape, 
-                             strides=[1, strides, strides, 1], 
-                             padding='SAME')
-  x = tf.nn.bias_add(x, bias)
-  if linear:
-    return x
-  else:
-    return tf.nn.relu(x)
+def deconv2d(x, filter_size, n_in, n_out, strides, output_shape, use_activation=True, name=None):
+  w = weight_variable(shape=[filter_size, filter_size, n_in, n_out], name=name+'_w')
+  b = bias_variable(shape=[n_in], name=name+'_b')
+  output_shape = tf.stack(output_shape)
+  x = tf.nn.conv2d_transpose(value=x,
+                             filter=w,
+                             output_shape=output_shape,
+                             strides=[1, strides, strides, 1],
+                             padding='SAME',
+                             name=name)
+  x = tf.nn.bias_add(x, b)
+
+  if use_activation:
+    x = tf.nn.leaky_relu(x)
+  return x
 
 class ConvVAE(object):
-  def __init__(self, args, sess, name='conv_vae'):
+  def __init__(self, args, sess, name="vae"):
     self.input_dim = args.input_dim
     self.hidden_dim = args.hidden_dim
     self.latent_dim = args.latent_dim
-    self.batch_size = args.batch_size
     self.sess = sess
     self.max_grad_norm = args.max_grad_norm
     self.learning_rate = args.learning_rate
+    self.batch_size = args.batch_size
 
     self.add_placeholder()
-
+    
     self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
     self.global_step = tf.Variable(0, trainable=False)
     self.build_graph()
     self.build_loss()
     self.build_train()
-
-    self.global_variables = tf.global_variables()
-    self.trainable_variables = tf.trainable_variables()
+    
     init_op = tf.global_variables_initializer()
     self.sess.run(init_op)
 
@@ -75,7 +68,6 @@ class ConvVAE(object):
                                    [self.batch_size, self.input_dim],
                                    name='x_images')
     self.z = tf.placeholder(tf.float32, [self.batch_size, self.latent_dim], name="z")
-    self.keep_prob = tf.placeholder(tf.float32, [], name='keep_prob')
 
   def build_graph(self):
     with tf.name_scope('model'):
@@ -84,54 +76,35 @@ class ConvVAE(object):
 
       with tf.variable_scope('decoder'):
         sample_z = self.sample_z(self.mu, self.log_sigma_sq)
-        self.logits, self.reconstruct = self.build_decoder(sample_z)
+        self.logits, self.x_reconstruct = self.build_decoder(sample_z)
 
   def build_encoder(self, x_images):
+    #x, filter_size, n_in, n_out, strides, name
     x = tf.reshape(x_images, [-1, 28, 28, 1])
-    x = tf.layers.conv2d(x, 16, [3, 3], [2, 2], padding='same', name='en_layer1')
-    x = tf.nn.relu(x)
-    print tf.size(x)
-    x = tf.layers.conv2d(x, 16, [3, 3], [1, 1], padding='same', name='en_layer2')
-    x = tf.nn.relu(x)
-    print tf.size(x)
-    x = tf.layers.conv2d(x, 8, [3, 3], [2, 2], padding='same', name='en_layer3')
-    x = tf.nn.relu(x)
-    print tf.size(x)
-    x = tf.layers.conv2d(x, 4, [1, 1], [1, 1], padding='same', name='en_layer4')
-    x = tf.nn.relu(x)
-    print tf.size(x)
+    x = conv2d(x, 3, 1, 10, 2, 'en_layer1')
+    x = conv2d(x, 3, 10, 10, 2, 'en_layer2')
+    x = conv2d(x, 3, 10, 10, 2, 'en_layer3')
     b, h, w, c = x.get_shape().as_list()
     x = tf.reshape(x, [-1, h * w * c])
-    print tf.size(x)
-    x = tf.layers.dense(x, 128, name='en_layer5')
-    x = tf.nn.relu(x)
     z_mu = tf.layers.dense(x, self.latent_dim, name='layer_mu')
     z_log_sigma_sq = tf.layers.dense(x, self.latent_dim, name='layer_log_sigma_sq')
-    return z_mu, z_log_sigma_sq
+    return z_mu, z_log_sigma_sq    
 
   def sample_z(self, mu, log_sigma_sq):
     eps = tf.random_normal(shape=tf.shape(mu))
     return mu + tf.exp(log_sigma_sq / 2) * eps
 
-  def build_decoder(self, sample_z):
-    x = sample_z
-    x = tf.layers.dense(x, 128, name='de_layer1')
-    x = tf.nn.relu(x)
-    x = tf.layers.dense(x, 196, name='de_layer2')
-    x = tf.nn.relu(x)
-    x = tf.reshape(x, [-1, 7, 7, 4])
-    x = tf.layers.conv2d_transpose(x, 8, [1, 1], [1, 1], padding='same', name='de_layer3')
-    x = tf.nn.relu(x)
-    x = tf.layers.conv2d_transpose(x, 8, [3, 3], [2, 2], padding='same', name='de_layer4')
-    x = tf.nn.relu(x)
-    x = tf.layers.conv2d_transpose(x, 8, [3, 3], [1, 1], padding='same', name='de_layer5')
-    x = tf.nn.relu(x)
-    x = tf.layers.conv2d_transpose(x, 1, [3, 3], [2, 2], padding='same', name='de_layer6')
-    x = tf.nn.relu(x)
-    b, h, w, c = x.get_shape().as_list()
-    x = tf.reshape(x, [-1, h * w * c])
-    x_recons = tf.nn.sigmoid(x)
-    return x, x_recons
+  def build_decoder(self, z):
+    #x, filter_size, n_in, n_out, strides, name
+    x = z
+    x = tf.layers.dense(x, 160, activation=tf.nn.relu, name='de_layer1')
+    x = tf.reshape(x, [-1, 4, 4, 10])
+    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 7, 7, 10], name='de_layer2')
+    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 14, 14, 10], name='de_layer3')
+    x = deconv2d(x, 3, 1, 10, 2, [self.batch_size, 28, 28, 1], False, name='de_layer4')
+    x = tf.reshape(x, [-1, self.input_dim])
+    x_reconstruct = tf.nn.sigmoid(x)
+    return x, x_reconstruct
 
   def build_loss(self):
     with tf.name_scope("loss"):
@@ -140,6 +113,7 @@ class ConvVAE(object):
       kl_loss = -0.5 * tf.reduce_sum(
           1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
       self.loss_op = tf.reduce_mean(rec_loss + kl_loss)
+      self.loss_rec, self.loss_kl = tf.reduce_mean(rec_loss), tf.reduce_mean(kl_loss)
 
   def build_train(self):
     with tf.name_scope('train'):
@@ -149,8 +123,8 @@ class ConvVAE(object):
 
   def train(self, x_images, get_summary=False):
     feed_dict = {self.x_images: x_images}
-    _, loss, = self.sess.run([self.train_op, self.loss_op], feed_dict=feed_dict)
-    return loss
+    _, loss, loss_rec, loss_kl = self.sess.run([self.train_op, self.loss_op, self.loss_rec, self.loss_kl], feed_dict=feed_dict)
+    return loss, loss_rec, loss_kl
 
   def generate(self, z):
     feed_dict= {self.z: z}
@@ -160,4 +134,4 @@ class ConvVAE(object):
 
   def reconstruct(self, x_images):
     feed_dict = {self.x_images: x_images}
-    return self.sess.run(self.reconstruct, feed_dict)
+    return self.sess.run(self.x_reconstruct, feed_dict)
