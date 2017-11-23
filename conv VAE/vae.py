@@ -108,7 +108,7 @@ class ConvVAE(object):
 
   def build_loss(self):
     with tf.name_scope("loss"):
-      rec_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
+      rec_loss = 0.5 * tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
           logits=self.logits, labels=self.x_images), 1)
       kl_loss = -0.5 * tf.reduce_sum(
           1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
