@@ -16,7 +16,6 @@ def bias_variable(shape, name, initializer=None):
 class VAE(object):
   def __init__(self, args, sess, name="vae"):
     self.input_dim = args.input_dim
-    self.hidden_dim = args.hidden_dim
     self.latent_dim = args.latent_dim
     self.sess = sess
     self.max_grad_norm = args.max_grad_norm
