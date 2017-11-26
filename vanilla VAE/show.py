@@ -23,14 +23,14 @@ def gen_z(size, img_num):
 
 with tf.device('/gpu:0'):
   args = config.get_args()
-  config = tf.ConfigProto(allow_soft_placement=True)
-  config.gpu_options.allow_growth = True
-  session = tf.Session(config=config)
-  model = vae.VAE(args, session)
+  config_proto = utils.get_config_proto()
+
+  sess = tf.Session(config=config_proto)
+  model = vae.VAE(args, sess)
 
   saver = tf.train.Saver()
   save_path = os.path.join(args.save_dir, "model.ckpt")
-  saver.restore(session, save_path)
+  saver.restore(sess, save_path)
   print "Model restored."
 
   z = []
