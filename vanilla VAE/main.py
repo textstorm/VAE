@@ -23,10 +23,11 @@ def main(args):
       for i in range(1, total_batch + 1):
         global_step = sess.run(model.global_step)
         x_batch, y_batch = mnist.train.next_batch(args.batch_size)
-        loss = model.train(x_batch)
+        loss, loss_rec, loss_kl = model.train(x_batch, args.learning_rate)
 
         if i % args.log_period == 0:
-          print "Epoch: %1d, Batch: %04d, loss: %9.9f" % (epoch, i, loss)
+          print "Epoch: %1d, Batch: %04d, loss: %9.9f, loss_rec: %9.9f, loss_kl: %9.9f" \
+              % (epoch, i, loss, loss_rec, loss_kl)
       
       if epoch % 50 == 0:
         print "- " * 50
@@ -37,9 +38,9 @@ def main(args):
         gen_images = np.reshape(model.generate(z), (100, 28, 28, 1))
         utils.save_images(gen_images, [10, 10], os.path.join(args.save_dir, "imgs/sample%s.jpg" % epoch))
 
-    save_path="../saves/model.ckpt"
+    save_path = os.path.join(args.save_dir, "model.ckpt")
     saver = tf.train.Saver()
-    saver.save(session, save_path)
+    saver.save(sess, save_path)
     print "Model stored...."
 
 if __name__ == "__main__":
