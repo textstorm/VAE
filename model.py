@@ -16,6 +16,7 @@ class Base(object):
       self.x_images = tf.placeholder(tf.float32, [None, self.input_dim])
       self.z = tf.placeholder(tf.float32, [None, self.latent_dim])
 
+    self.batch_size = tf.size(self.x_images)[0]
     init_op = tf.global_variables_initializer()
     self.sess.run(init_op)
     self.summary = tf.summary.merge_all()
@@ -39,12 +40,13 @@ class Base(object):
     x_recons = tf.nn.sigmoid(x)
     return x, x_recons
 
-  def train(self, x_images, get_summary=False):
+  def train(self, x_images):
     feed_dict = {self.x_images: x_images}
     return _, loss, loss_rec, loss_kl = self.sess.run([self.train_op, 
                                                        self.loss_op, 
                                                        self.loss_rec, 
-                                                       self.loss_kl], feed_dict=feed_dict)
+                                                       self.loss_kl,
+                                                       self.global_step], feed_dict=feed_dict)
 
   def generate(self, z):
     feed_dict= {self.z: z}
@@ -95,7 +97,6 @@ class VAE(object):
 class DCVAE(Base):
   def __init__(self, args, sess, name="dcvae"):
     super(DCVAE, self).__init__(args=args, sess=sess, name=name)
-    self.batch_size = tf.size(self.x_images)[0]
 
     with tf.name_scope('dcvae'):
       with tf.variable_scope('encoder'):
