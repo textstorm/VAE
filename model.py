@@ -94,4 +94,46 @@ class VAE(object):
 
 class DCVAE(Base):
   def __init__(self, args, sess, name="dcvae"):
-    
+    super(DCVAE, self).__init__(args=args, sess=sess, name=name)
+    self.batch_size = tf.size(self.x_images)[0]
+
+    with tf.name_scope('dcvae'):
+      with tf.variable_scope('encoder'):
+        self.mu, self.log_sigma_sq = self.build_encoder(self.x_images)
+      with tf.variable_scope('decoder'):
+        sample_z = self.sample_z(self.mu, self.log_sigma_sq)
+        self.logits, self.x_reconstruct = self.build_decoder(sample_z)
+
+    with tf.name_scope("loss"):
+      rec_loss = 0.5 * tf.reduce_sum(
+          tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits, labels=self.x_images), 1)
+      kl_loss = -0.5 * tf.reduce_sum(
+          1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
+      self.loss_op = tf.reduce_mean(rec_loss + kl_loss)
+      self.loss_rec, self.loss_kl = tf.reduce_mean(rec_loss), tf.reduce_mean(kl_loss)
+
+    with tf.name_scope('train'):
+      grads_and_vars = self.optimizer.compute_gradients(self.loss_op)
+      grads_and_vars = [(tf.clip_by_norm(g, self.max_grad_norm), v) for g, v in grads_and_vars]
+      self.train_op = self.optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
+
+  def build_encoder(self, x_images):
+    x = tf.reshape(x_images, [-1, 28, 28, 1])
+    x = conv2d(x, 3, 1, 10, 2, 'en_layer1')
+    x = conv2d(x, 3, 10, 10, 2, 'en_layer2')
+    x = conv2d(x, 3, 10, 10, 2, 'en_layer3')
+    b, h, w, c = x.get_shape().as_list()
+    x = tf.reshape(x, [-1, h * w * c])
+    z_mu = tf.layers.dense(x, self.latent_dim, name='layer_mu')
+    z_log_sigma_sq = tf.layers.dense(x, self.latent_dim, name='layer_log_sigma_sq')
+    return z_mu, z_log_sigma_sq    
+
+  def build_decoder(self, z):
+    x = tf.layers.dense(z, 160, activation=tf.nn.relu, name='de_layer1')
+    x = tf.reshape(x, [-1, 4, 4, 10])
+    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 7, 7, 10], name='de_layer2')
+    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 14, 14, 10], name='de_layer3')
+    x = deconv2d(x, 3, 1, 10, 2, [self.batch_size, 28, 28, 1], False, name='de_layer4')
+    x = tf.reshape(x, [-1, self.input_dim])
+    x_reconstruct = tf.nn.sigmoid(x)
+    return x, x_reconstruct
