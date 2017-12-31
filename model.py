@@ -94,6 +94,8 @@ class VAE(object):
       grads_and_vars = [(tf.clip_by_norm(g, self.max_grad_norm), v) for g, v in grads_and_vars]
       self.train_op = self.optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
 
+    self.saver = tf.train.Saver(tf.global_variables())
+
 class DCVAE(Base):
   def __init__(self, args, sess, name="dcvae"):
     super(DCVAE, self).__init__(args=args, sess=sess, name=name)
@@ -117,6 +119,8 @@ class DCVAE(Base):
       grads_and_vars = self.optimizer.compute_gradients(self.loss_op)
       grads_and_vars = [(tf.clip_by_norm(g, self.max_grad_norm), v) for g, v in grads_and_vars]
       self.train_op = self.optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
+
+    self.saver = tf.train.Saver(tf.global_variables())
 
   def build_encoder(self, x_images):
     x = tf.reshape(x_images, [-1, 28, 28, 1])
