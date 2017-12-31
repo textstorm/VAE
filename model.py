@@ -8,7 +8,9 @@ class Base(object):
     self.hidden_dim = args.hidden_dim
     self.sess = sess
     self.max_grad_norm = args.max_grad_norm
-    self.learning_rate = args.learning_rate
+    self.learning_rate = tf.Variable(float(args.learning_rate), trainable=False, name="learning_rate")
+    self.learning_rate_decay_op = self.learning_rate.assign(
+        tf.multiply(self.learning_rate, args.lr_decay))
     self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
     self.global_step = tf.Variable(0, trainable=False)
 
@@ -41,7 +43,8 @@ class Base(object):
                           self.loss_op, 
                           self.loss_rec, 
                           self.loss_kl,
-                          self.global_step], feed_dict=feed_dict)
+                          self.global_step,
+                          self.summary], feed_dict=feed_dict)
 
   def generate(self, z):
     feed_dict= {self.z: z}
@@ -73,6 +76,7 @@ class VAE(Base):
         self.mu, self.log_sigma_sq = self.build_encoder(self.x_images)
       with tf.variable_scope("decoder"):
         sample_z = self.sample_z(self.mu, self.log_sigma_sq)
+        tf.summary.histogram('sample_gaussian', sample_z)
         self.logits, self.reconstruct = self.build_decoder(sample_z)
 
     with tf.name_scope("loss"):
@@ -82,6 +86,9 @@ class VAE(Base):
           1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
       self.loss_op = tf.reduce_mean(rec_loss + kl_loss)
       self.loss_rec, self.loss_kl = tf.reduce_mean(rec_loss), tf.reduce_mean(kl_loss)
+      tf.summary.scalar("reconstruct_loss", self.loss_rec)
+      tf.summary.scalar("kl_loss", self.loss_kl)
+      tf.summary.scalar("total_loss", self.loss_op)
 
     with tf.name_scope('train'):
       grads_and_vars = self.optimizer.compute_gradients(self.loss_op)
@@ -101,6 +108,7 @@ class DCVAE(Base):
         self.mu, self.log_sigma_sq = self.build_encoder(self.x_images)
       with tf.variable_scope('decoder'):
         sample_z = self.sample_z(self.mu, self.log_sigma_sq)
+        tf.summary.histogram('sample_gaussian', sample_z)
         self.logits, self.x_reconstruct = self.build_decoder(sample_z)
 
     with tf.name_scope("loss"):
@@ -110,6 +118,9 @@ class DCVAE(Base):
           1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
       self.loss_op = tf.reduce_mean(rec_loss + kl_loss)
       self.loss_rec, self.loss_kl = tf.reduce_mean(rec_loss), tf.reduce_mean(kl_loss)
+      tf.summary.scalar("reconstruct_loss", self.loss_rec)
+      tf.summary.scalar("kl_loss", self.loss_kl)
+      tf.summary.scalar("total_loss", self.loss_op)
 
     with tf.name_scope('train'):
       grads_and_vars = self.optimizer.compute_gradients(self.loss_op)
