@@ -20,7 +20,10 @@ def get_args():
   parser.add_argument('--latent_dim', type=int, default=100, help="Dimension of latent variable")
 
   parser.add_argument('--batch_size', type=int, default=100, help='Train batch size')
-  parser.add_argument('--nb_epoch', type=int, default=1000, help='The number of epoch')
+  parser.add_argument('--anneal', type=bool, default=True, help='whether to anneal')
+  parser.add_argument('--anneal_start', type=int, default=100, help='anneal start epoch')
+  parser.add_argument('--lr_decay', type=float, default=0.97, help='learning rate decay rate')
+  parser.add_argument('--nb_epoch', type=int, default=200, help='The number of epoch')
   parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate')
   parser.add_argument('--max_grad_norm', type=float, default=10.0, help='Max norm of gradient')
   parser.add_argument('--log_period', type=int, default=100, help='number step to print')
