@@ -16,11 +16,6 @@ class Base(object):
       self.x_images = tf.placeholder(tf.float32, [None, self.input_dim])
       self.z = tf.placeholder(tf.float32, [None, self.latent_dim])
 
-    self.batch_size = tf.size(self.x_images)[0]
-    init_op = tf.global_variables_initializer()
-    self.sess.run(init_op)
-    self.summary = tf.summary.merge_all()
-
   def sample_z(self, mu, log_sigma_sq):
     eps = tf.random_normal(shape=tf.shape(mu))
     return mu + tf.exp(log_sigma_sq / 2) * eps
@@ -42,11 +37,11 @@ class Base(object):
 
   def train(self, x_images):
     feed_dict = {self.x_images: x_images}
-    return _, loss, loss_rec, loss_kl = self.sess.run([self.train_op, 
-                                                       self.loss_op, 
-                                                       self.loss_rec, 
-                                                       self.loss_kl,
-                                                       self.global_step], feed_dict=feed_dict)
+    return self.sess.run([self.train_op, 
+                          self.loss_op, 
+                          self.loss_rec, 
+                          self.loss_kl,
+                          self.global_step], feed_dict=feed_dict)
 
   def generate(self, z):
     feed_dict= {self.z: z}
@@ -70,10 +65,9 @@ class Base(object):
       initializer = initializer
     return tf.get_variable(shape=shape, initializer=initializer, name=name)
 
-class VAE(object):
+class VAE(Base):
   def __init__(self, args, sess, name="vae"):
     super(VAE, self).__init__(args=args, sess=sess, name=name)
-
     with tf.name_scope("vae"):
       with tf.variable_scope("encoder"):
         self.mu, self.log_sigma_sq = self.build_encoder(self.x_images)
@@ -94,12 +88,14 @@ class VAE(object):
       grads_and_vars = [(tf.clip_by_norm(g, self.max_grad_norm), v) for g, v in grads_and_vars]
       self.train_op = self.optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
 
+    init_op = tf.global_variables_initializer()
+    self.sess.run(init_op)
+    self.summary = tf.summary.merge_all()
     self.saver = tf.train.Saver(tf.global_variables())
 
 class DCVAE(Base):
   def __init__(self, args, sess, name="dcvae"):
     super(DCVAE, self).__init__(args=args, sess=sess, name=name)
-
     with tf.name_scope('dcvae'):
       with tf.variable_scope('encoder'):
         self.mu, self.log_sigma_sq = self.build_encoder(self.x_images)
@@ -120,6 +116,9 @@ class DCVAE(Base):
       grads_and_vars = [(tf.clip_by_norm(g, self.max_grad_norm), v) for g, v in grads_and_vars]
       self.train_op = self.optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
 
+    init_op = tf.global_variables_initializer()
+    self.sess.run(init_op)
+    self.summary = tf.summary.merge_all()
     self.saver = tf.train.Saver(tf.global_variables())
 
   def build_encoder(self, x_images):
@@ -136,9 +135,9 @@ class DCVAE(Base):
   def build_decoder(self, z):
     x = tf.layers.dense(z, 160, activation=tf.nn.relu, name='de_layer1')
     x = tf.reshape(x, [-1, 4, 4, 10])
-    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 7, 7, 10], name='de_layer2')
-    x = deconv2d(x, 3, 10, 10, 2, [self.batch_size, 14, 14, 10], name='de_layer3')
-    x = deconv2d(x, 3, 1, 10, 2, [self.batch_size, 28, 28, 1], False, name='de_layer4')
+    x = deconv2d(x, 3, 10, 10, 2, [-1, 7, 7, 10], name='de_layer2')
+    x = deconv2d(x, 3, 10, 10, 2, [-1, 14, 14, 10], name='de_layer3')
+    x = deconv2d(x, 3, 1, 10, 2, [-1, 28, 28, 1], False, name='de_layer4')
     x = tf.reshape(x, [-1, self.input_dim])
     x_reconstruct = tf.nn.sigmoid(x)
     return x, x_reconstruct
