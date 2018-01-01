@@ -12,7 +12,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def main(args):
   #
-  save_dir, img_dir, log_dir = args.save_dir, args.img_dir, args.log_dir
+  save_dir = os.path.join(args.save_dir, args.model_type)
+  img_dir = os.path.join(args.img_dir, args.model_type)
+  log_dir = os.path.join(args.log_dir, args.model_type)
   train_dir = args.train_dir
 
   if not os.path.exists(save_dir):
@@ -47,16 +49,19 @@ def main(args):
 
       if global_step % args.log_period == 0:
         print "global step %d, loss %.9f, loss_rec %.9f, loss_kl %.9f, time %.2fs" \
-            % (global_step, loss, loss_rec, loss_kl, time.time()-step_start_time)
+            % (global_step, loss, loss_rec, loss_kl, time.time() - step_start_time)
         step_start_time = time.time()
 
     if args.anneal and epoch >= args.anneal_start:
-      train_sess.run(loaded_train_model.learning_rate_decay_op)
+      sess.run(model.learning_rate_decay_op)
 
     if epoch % args.save_period == 0:
       z = np.random.normal(size=[100, args.latent_dim])
-      gen_images = np.reshape(model.generate(z), (100, 28, 28, 1))
-      utils.save_images(gen_images, [10, 10], os.path.join(args.img_dir, "sample%s.jpg" % epoch))
+      if args.model_type == "vae":
+        gen_images = np.reshape(model.generate(z), (100, 28, 28, 1))
+      elif args.model_type == "dcvae":
+        gen_images = np.reshape(model.generate(z, 100), (100, 28, 28, 1))
+      utils.save_images(gen_images, [10, 10], os.path.join(img_dir, "sample%s.jpg" % epoch))
 
   model.saver.save(sess, os.path.join(save_dir, "model.ckpt"))
   print "Model stored...."
