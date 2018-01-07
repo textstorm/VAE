@@ -194,21 +194,76 @@ class LVAE(Base):
     self.hidden_sizes = args.hidden_sizes
     self.latent_sizes = args.latent_sizes
     self.latent_length = len(self.latent_sizes)
-    self.encoder_mus, self.encoder_logvars = [0] * self.latent_length, [0] * self.latent_length
-    self.decoder_mus, self.decoder_logvars = [0] * self.latent_length, [0] * self.latent_length
-    self.prior_mus, self.prior_logvars = [0] * self.latent_length, [0] * self.latent_length
+    # self.encoder_mus, self.encoder_logvars = [0] * self.latent_length, [0] * self.latent_length
+    # self.decoder_mus, self.decoder_logvars = [0] * self.latent_length, [0] * self.latent_length
+    # self.prior_mus, self.prior_logvars = [0] * self.latent_length, [0] * self.latent_length
+
+    with tf.name_scope('lvae'):
+      with tf.variable_scope('encoder'):
+        encoder_mus, encoder_logvars = self.build_encoder(self.x_images)
+      with tf.variable_scope('decoder'):
+        logits, x_reconstruct = self.build_decoder(encoder_mus, encoder_logvars)
+        # tf.summary.histogram('sample_gaussian', sample_z)
+
+    with tf.name_scope("loss"):
+      rec_loss = 0.5 * tf.reduce_sum(
+          tf.nn.sigmoid_cross_entropy_with_logits(logits=self.logits, labels=self.x_images), 1)
+      # kl_loss = -0.5 * tf.reduce_sum(
+      #     1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
+      kl_losses, kl_loss = self.kl_loss_compute()
+      self.loss_op = tf.reduce_mean(rec_loss + kl_loss)
+      self.loss_rec, self.loss_kl = tf.reduce_mean(rec_loss), tf.reduce_mean(kl_loss)
+      tf.summary.scalar("reconstruct_loss", self.loss_rec)
+      tf.summary.scalar("kl_loss", self.loss_kl)
+      tf.summary.scalar("total_loss", self.loss_op)
 
   def build_encoder(self, x_images):
     h = x_images
+    encoder_mus, encoder_logvars = [0] * self.latent_length, [0] * self.latent_length
     for idx, hsize in enumerate(self.hidden_sizes):
       h = tf.layers.dense(h, hsize)
       h = tf.layers.batch_normalization(h)
       h = tf.nn.relu(h)
       self.encoder_mus[idx], self.encoder_logvars[idx] = self.build_latent(h)
+    return encoder_mus, encoder_logvars
 
-  def build_decoder(self, z):
-    
+  def build_decoder(self, encoder_mus, encoder_logvars):
+    self.decoder_mus, self.decoder_logvars = [0] * self.latent_length, [0] * self.latent_length
+    prior_mus, prior_logvars = [0] * self.latent_length, [0] * self.latent_length
+    for idx in reversed(range(self.latent_length)):
+      if idx == self.latent_length - 1:
+        mu, logvars = encoder_mus[idx], encoder_logvars[idx]
+        decoder_mus[idx], decoder_logvars[idx] = mu, logvars
+        z = self.sample_z(mu, logvars)
+        prior_mus[idx], prior_logvars[idx] = tf.zeros((mu.get_shape())), tf.zeros((logvars.get_shape()))
+      else:
+        prior_mus[idx] = tf.layers.dense(z, self.latent_sizes[idx], activation=tf.nn.softplus)
+        prior_logvars[idx] = tf.layers.dense(z, self.latent_sizes[idx], activation=tf.nn.softplus)
+        mu_t, sigma_t, mu_d, sigma_d = encoder_mus[idx], encoder_logvars[idx], decoder_mus[idx], decoder_logvars[idx]
+        decoder_mus[idx], decoder_logvars[idx] = self.precision_weighted(mu_t, sigma_t, mu_d, sigma_d)
+        z = self.sample_z(decoder_mus[idx], decoder_logvars[idx])
+
+    x = tf.layers.dense(z, self.input_dim, activation=None)
+    x_recons = tf.nn.sigmoid(x)
+    return x, x_recons 
+
   def build_latent(self, hidden):
     z_mu = tf.layers.dense(x, self.latent_dim, name='layer_mu')
     z_log_sigma_sq = tf.layers.dense(x, self.latent_dim, name='layer_log_sigma_sq')
     return z_mu, z_log_sigma_sq
+
+  def precision_weighted(self, mu_t, sigma_t, mu_d, sigma_d):
+    sigma_t_reci = sigma_t ** (-1)
+    sigma_d_reci = sigma_d ** (-1)
+    mu = (mu_t * sigma_t_reci + mu_d * sigma_d_reci) / (sigma_t_reci + sigma_d_reci)
+    sigma = (sigma_d_reci + sigma_t_reci) ** (-1)
+    return mu, sigma
+
+  def kl_loss_compute(self, ):
+    kl_loss = [0] * self.latent_length
+    for idx in range(self.latent_length):
+
+      kl_loss[idx] = -0.5 * tf.reduce_sum(
+          1. + self.log_sigma_sq - self.mu ** 2 - tf.exp(self.log_sigma_sq), 1)
+
+    return kl_loss, kl_loss[-1]
